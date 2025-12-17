@@ -3,7 +3,7 @@
 # =========================================================
 # STAGE 1: Base Image (Installs Dependencies)
 # =========================================================
-FROM nvidia/cuda:13.0.2-devel-ubuntu24.04 AS base
+FROM nvidia/cuda:13.1.0-devel-ubuntu24.04 AS base
 
 # Set non-interactive frontend to prevent apt prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -158,7 +158,7 @@ RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
 # =========================================================
 # STAGE 4: Runner (Transfers only necessary artifacts)
 # =========================================================
-FROM nvidia/cuda:13.0.2-devel-ubuntu24.04 AS runner
+FROM nvidia/cuda:13.1.0-devel-ubuntu24.04 AS runner
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
@@ -203,3 +203,4 @@ RUN chmod +x $VLLM_BASE_DIR/run-cluster-node.sh
 # Final extra deps
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     pip install ray[default]
+
