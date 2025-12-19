@@ -13,6 +13,7 @@ SSH_USER="$USER"
 NO_BUILD=false
 TRITON_REF="v3.5.1"
 VLLM_REF="main"
+BUILD_JOBS="16"
 
 # Help function
 usage() {
@@ -22,6 +23,7 @@ usage() {
     echo "  --rebuild-vllm            : Set cache bust for vllm"
     echo "  --triton-ref <ref>        : Triton commit SHA, branch or tag (default: 'v3.5.1')"
     echo "  --vllm-ref <ref>          : vLLM commit SHA, branch or tag (default: 'main')"
+    echo "  -j, --build-jobs <jobs>   : Number of concurrent build jobs (default: \${BUILD_JOBS})"
     echo "  -h, --copy-to-host <host> : Host address to copy the image to (if not set, don't copy)"
     echo "  -u, --user <user>         : Username for ssh command (default: \$USER)"
     echo "  --no-build                : Skip building, only copy image (requires --copy-to-host)"
@@ -37,6 +39,7 @@ while [[ "$#" -gt 0 ]]; do
         --rebuild-vllm) REBUILD_VLLM=true ;;
         --triton-ref) TRITON_REF="$2"; shift ;;
         --vllm-ref) VLLM_REF="$2"; shift ;;
+        -j|--build-jobs) BUILD_JOBS="$2"; shift ;;
         -h|--copy-to-host) COPY_HOST="$2"; shift ;;
         -u|--user) SSH_USER="$2"; shift ;;
         --no-build) NO_BUILD=true ;;
@@ -73,6 +76,9 @@ if [ "$NO_BUILD" = false ]; then
 
     # Add VLLM_REF to build arguments
     CMD+=("--build-arg" "VLLM_REF=$VLLM_REF")
+
+    # Add BUILD_JOBS to build arguments
+    CMD+=("--build-arg" "BUILD_JOBS=$BUILD_JOBS")
 
     # Add build context
     CMD+=(".")
