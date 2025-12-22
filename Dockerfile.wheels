@@ -81,6 +81,7 @@ ARG PRE_TRANSFORMERS=0
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     if [ "$PRE_TRANSFORMERS" = "1" ]; then \
         uv pip install -U transformers --pre; \
+        uv pip install numpy==2.2.6; \
     fi
 
 # Setup Env for Runtime
