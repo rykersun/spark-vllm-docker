@@ -38,7 +38,7 @@ RUN apt update && \
     curl vim ninja-build git \
     ccache \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install uv && pip uninstall -y flash-attn pytorch-triton triton-kernels
+    && pip install uv && pip uninstall -y flash-attn
 
 # Configure Ccache for CUDA/C++
 ENV PATH=/usr/lib/ccache:$PATH
@@ -243,7 +243,7 @@ RUN apt update && \
     curl vim git \
     libxcb1 \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install uv && pip uninstall -y flash-attn pytorch-triton triton-kernels
+    && pip install uv && pip uninstall -y flash-attn triton-kernels # pytorch-triton
 
 # Set final working directory
 WORKDIR $VLLM_BASE_DIR
@@ -280,10 +280,6 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     uv pip install ray[default] fastsafetensors
 
 # Cleanup
-
-# If not compiling Triton
-# remove triton-kernels as they are not compatible with this vLLM version yet
-RUN uv pip uninstall triton-kernels
 
 # Keeping it here for reference - this won't work as is without squashing layers
 # RUN uv pip uninstall absl-py apex argon2-cffi \
