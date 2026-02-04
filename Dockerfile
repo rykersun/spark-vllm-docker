@@ -163,6 +163,16 @@ RUN --mount=type=cache,id=repo-cache,target=/repo-cache \
 
 WORKDIR $VLLM_BASE_DIR/vllm
 
+ARG VLLM_PRS=""
+
+RUN if [ -n "$VLLM_PRS" ]; then \
+        echo "Applying PRs: $VLLM_PRS"; \
+        for pr in $VLLM_PRS; do \
+            echo "Fetching and applying PR #$pr..."; \
+            curl -fL "https://github.com/vllm-project/vllm/pull/${pr}.diff" | git apply -v; \
+        done; \
+    fi
+
 ARG PRE_TRANSFORMERS=0
 
 # Prepare build requirements

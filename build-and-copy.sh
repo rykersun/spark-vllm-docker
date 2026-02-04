@@ -21,6 +21,7 @@ PRE_TRANSFORMERS=false
 EXP_MXFP4=false
 TRITON_REF_SET=false
 VLLM_REF_SET=false
+VLLM_PRS=""
 
 cleanup() {
     if [ -n "$TMP_IMAGE" ] && [ -f "$TMP_IMAGE" ]; then
@@ -77,6 +78,7 @@ usage() {
     echo "  --pre-flashinfer          : Use pre-release versions of FlashInfer"
     echo "  --pre-tf, --pre-transformers : Install transformers 5.0.0rc0 or higher"
     echo "  --exp-mxfp4, --experimental-mxfp4 : Build with experimental native MXFP4 support"
+    echo "  --apply-vllm-pr <pr-num>  : Apply a specific PR patch to vLLM source code. Can be specified multiple times."
     echo "  --no-build                : Skip building, only copy image (requires --copy-to)"
     echo "  -h, --help                : Show this help message"
     exit 1
@@ -140,12 +142,30 @@ while [[ "$#" -gt 0 ]]; do
         --pre-flashinfer) PRE_FLASHINFER=true ;;
         --pre-tf|--pre-transformers) PRE_TRANSFORMERS=true ;;
         --exp-mxfp4|--experimental-mxfp4) EXP_MXFP4=true ;;
+        --apply-vllm-pr)
+            if [ -n "$2" ] && [[ "$2" != -* ]]; then
+               if [ -n "$VLLM_PRS" ]; then
+                   VLLM_PRS="$VLLM_PRS $2"
+               else
+                   VLLM_PRS="$2"
+               fi
+               shift
+            else
+               echo "Error: --apply-vllm-pr requires a PR number."
+               exit 1
+            fi
+            ;;
         --no-build) NO_BUILD=true ;;
         -h|--help) usage ;;
         *) echo "Unknown parameter passed: $1"; usage ;;
     esac
     shift
 done
+
+if [ -n "$VLLM_PRS" ]; then
+    if [ "$EXP_MXFP4" = true ]; then echo "Error: --apply-vllm-pr is incompatible with --exp-mxfp4"; exit 1; fi
+    if [ -n "$USE_WHEELS_MODE" ]; then echo "Error: --apply-vllm-pr is incompatible with --use-wheels"; exit 1; fi
+fi
 
 if [ "$EXP_MXFP4" = true ]; then
     if [ "$TRITON_REF_SET" = true ]; then echo "Error: --exp-mxfp4 is incompatible with --triton-ref"; exit 1; fi
@@ -202,6 +222,11 @@ if [ "$NO_BUILD" = false ]; then
     if [ "$PRE_FLASHINFER" = true ]; then
         echo "Using pre-release FlashInfer..."
         CMD+=("--build-arg" "FLASHINFER_PRE=--pre")
+    fi
+
+    if [ -n "$VLLM_PRS" ]; then
+        echo "Applying vLLM PRs: $VLLM_PRS"
+        CMD+=("--build-arg" "VLLM_PRS=$VLLM_PRS")
     fi
 
     if [ "$PRE_TRANSFORMERS" = true ]; then
