@@ -43,12 +43,12 @@ usage() {
     echo "  -e, --env       Environment variable to pass to container (e.g. -e VAR=val)"
     echo "  --nccl-debug    NCCL debug level (Optional, one of: VERSION, WARN, INFO, TRACE). If no level is provided, defaults to INFO."
     echo "  --apply-mod     Path to directory or zip file containing run.sh to apply before launch (Can be specified multiple times)"
-    echo "  --launch-script Path to bash script to execute in the container (from examples/ directory or absolute path)"
+    echo "  --launch-script Path to bash script to execute in the container (from examples/ directory or absolute path). If launch script is specified, action should be omitted."
     echo "  --check-config  Check configuration and auto-detection without launching"
     echo "  --solo          Solo mode: skip autodetection, launch only on current node, do not launch Ray cluster"
     echo "  -d              Daemon mode (only for 'start' action)"
-    echo "  action          start | stop | status | exec (Default: start)"
-    echo "  command         Command to run (only for 'exec' action)"
+    echo "  action          start | stop | status | exec (Default: start). Not compatible with --launch-script."
+    echo "  command         Command to run (only for 'exec' action). Not compatible with --launch-script."
     echo ""
     echo "Launch Script Usage:"
     echo "  $0 --launch-script examples/my-script.sh   # Script copied to container and executed"
@@ -80,9 +80,17 @@ while [[ "$#" -gt 0 ]]; do
         -d) DAEMON_MODE="true" ;;
         -h|--help) usage ;;
         start|stop|status) 
+            if [[ -n "$LAUNCH_SCRIPT_PATH" ]]; then
+                echo "Error: Action '$1' is not compatible with --launch-script. Please omit the action or not use --launch-script."
+                exit 1
+            fi
             ACTION="$1" 
             ;;
         exec)
+            if [[ -n "$LAUNCH_SCRIPT_PATH" ]]; then
+                echo "Error: Action 'exec' is not compatible with --launch-script. Please omit the action or not use --launch-script."
+                exit 1
+            fi
             ACTION="exec"
             shift
             COMMAND_TO_RUN="$@"
@@ -93,6 +101,10 @@ while [[ "$#" -gt 0 ]]; do
             # unless it's the default 'start' implied.
             # However, to support "omitted" = start, we need to be careful.
             # If the arg looks like a command, it's exec.
+            if [[ -n "$LAUNCH_SCRIPT_PATH" ]]; then
+                echo "Error: Command is not compatible with --launch-script. Please omit the command or not use --launch-script."
+                exit 1
+            fi
             ACTION="exec"
             COMMAND_TO_RUN="$@"
             break 
@@ -467,47 +479,21 @@ apply_mod_to_container() {
 
 # Copy Launch Script to Container Function
 copy_launch_script_to_container() {
-    local node_ip="$1"
-    local container="$2"
-    local is_local="$3" # true/false
-    local script_path="$4"
+    local container="$1"
+    local script_path="$2"
 
-    echo "Copying launch script to $node_ip..."
-
-    # Command prefix for remote vs local
-    local cmd_prefix=""
-    if [[ "$is_local" == "false" ]]; then
-        cmd_prefix="ssh -o BatchMode=yes -o StrictHostKeyChecking=no $node_ip"
-    fi
+    echo "Copying launch script to head node..."
 
     local target_script_path="$script_path"
-    local remote_cleanup_path=""
-
-    # Copy script to remote node first if needed
-    if [[ "$is_local" == "false" ]]; then
-        local remote_tmp="/tmp/exec_script_$(date +%s)_$RANDOM.sh"
-        echo "  Copying script to $node_ip:$remote_tmp..."
-        if ! scp -o BatchMode=yes -o StrictHostKeyChecking=no "$script_path" "$node_ip:$remote_tmp"; then
-            echo "Error: Failed to copy launch script to $node_ip"
-            exit 1
-        fi
-        target_script_path="$remote_tmp"
-        remote_cleanup_path="$remote_tmp"
-    fi
 
     # Copy script into container as /workspace/exec-script.sh
     echo "  Copying script into container..."
-    $cmd_prefix docker cp "$target_script_path" "$container:/workspace/exec-script.sh"
+    docker cp "$target_script_path" "$container:/workspace/exec-script.sh"
 
     # Make executable
-    $cmd_prefix docker exec "$container" chmod +x /workspace/exec-script.sh
+    docker exec "$container" chmod +x /workspace/exec-script.sh
 
-    # Cleanup remote temp
-    if [[ -n "$remote_cleanup_path" ]]; then
-        ssh -o BatchMode=yes -o StrictHostKeyChecking=no "$node_ip" "rm -f $remote_cleanup_path"
-    fi
-
-    echo "  Launch script copied to $node_ip"
+    echo "  Launch script copied to head node"
 }
 
 # Start Cluster Function
@@ -580,8 +566,7 @@ start_cluster() {
 
     # Copy launch script to head node only (workers don't need it - they just run Ray)
     if [[ -n "$LAUNCH_SCRIPT_PATH" ]]; then
-        echo "Copying launch script to head node..."
-        copy_launch_script_to_container "$HEAD_IP" "$CONTAINER_NAME" "true" "$LAUNCH_SCRIPT_PATH"
+        copy_launch_script_to_container "$CONTAINER_NAME" "$LAUNCH_SCRIPT_PATH"
     fi
 
     if [[ "$SOLO_MODE" == "false" ]]; then
