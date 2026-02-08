@@ -55,7 +55,7 @@ ENV CMAKE_CUDA_COMPILER_LAUNCHER=ccache
 WORKDIR $VLLM_BASE_DIR
 
 # 2. Set Environment Variables
-ENV TORCH_CUDA_ARCH_LIST=12.1f
+ENV TORCH_CUDA_ARCH_LIST=12.1a
 ENV TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
 
 # =========================================================
@@ -90,7 +90,7 @@ FROM base AS builder
 
 # ======= FlashInfer Build ==========
 
-ENV FLASHINFER_CUDA_ARCH_LIST="12.1f"
+ENV FLASHINFER_CUDA_ARCH_LIST="12.1a"
 WORKDIR $VLLM_BASE_DIR
 ARG FLASHINFER_REF=main
 
@@ -275,8 +275,8 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     fi
 
 # Setup Env for Runtime
-ENV TORCH_CUDA_ARCH_LIST=12.1f
-ENV FLASHINFER_CUDA_ARCH_LIST="12.1f"
+ENV TORCH_CUDA_ARCH_LIST=12.1a
+ENV FLASHINFER_CUDA_ARCH_LIST="12.1a"
 ENV TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
 ENV TIKTOKEN_ENCODINGS_BASE=$VLLM_BASE_DIR/tiktoken_encodings
 ENV PATH=$VLLM_BASE_DIR:$PATH
