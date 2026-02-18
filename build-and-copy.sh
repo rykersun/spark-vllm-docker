@@ -21,6 +21,8 @@ PRE_TRANSFORMERS=false
 FULL_LOG=false
 BUILD_JOBS="16"
 GPU_ARCH_LIST="12.1a"
+WHEELS_REPO="eugr/spark-vllm-docker"
+FLASHINFER_RELEASE_TAG="prebuilt-flashinfer-current"
 
 cleanup() {
     if [ -n "$TMP_IMAGE" ] && [ -f "$TMP_IMAGE" ]; then
@@ -57,6 +59,61 @@ copy_to_host() {
         echo "Copy to $host failed."
         return 1
     fi
+}
+
+# try_download_wheels TAG PREFIX
+# Downloads wheels matching PREFIX*.whl from a GitHub release.
+# Skips files that are already present and up to date (by remote updated_at vs local mtime).
+# Returns 0 if all matching wheels are now available, 1 on any error.
+try_download_wheels() {
+    local TAG="$1"
+    local PREFIX="$2"
+    local WHEELS_DIR="./wheels"
+
+    local RELEASE_JSON
+    RELEASE_JSON=$(curl -sf --connect-timeout 10 \
+        "https://api.github.com/repos/$WHEELS_REPO/releases/tags/$TAG") || {
+        echo "Could not fetch release metadata for '$TAG' — skipping download."
+        return 1
+    }
+
+    local DOWNLOAD_LIST
+    DOWNLOAD_LIST=$(echo "$RELEASE_JSON" | python3 -c '
+import json, sys, os
+from datetime import datetime, timezone
+
+wheels_dir, prefix = sys.argv[1], sys.argv[2]
+data = json.load(sys.stdin)
+assets = [a for a in data.get("assets", [])
+          if a["name"].startswith(prefix) and a["name"].endswith(".whl")]
+
+if not assets:
+    print("No assets found matching prefix: " + prefix, file=sys.stderr)
+    sys.exit(1)
+
+for a in assets:
+    local_path = os.path.join(wheels_dir, a["name"])
+    remote_ts = datetime.strptime(a["updated_at"], "%Y-%m-%dT%H:%M:%SZ") \
+                    .replace(tzinfo=timezone.utc).timestamp()
+    if not os.path.exists(local_path) or remote_ts > os.path.getmtime(local_path):
+        print(a["browser_download_url"] + " " + a["name"])
+' "$WHEELS_DIR" "$PREFIX") || return 1
+
+    if [ -z "$DOWNLOAD_LIST" ]; then
+        echo "All $PREFIX wheels are up to date — skipping download."
+        return 0
+    fi
+
+    local URL NAME
+    while IFS=' ' read -r URL NAME; do
+        echo "Downloading $NAME..."
+        if ! curl -L --progress-bar --connect-timeout 30 "$URL" -o "$WHEELS_DIR/$NAME"; then
+            echo "Failed to download $NAME."
+            return 1
+        fi
+    done <<< "$DOWNLOAD_LIST"
+
+    return 0
 }
 
 # Help function
@@ -199,13 +256,20 @@ if [ "$NO_BUILD" = false ]; then
             FLASHINFER_WHEELS_EXIST=true
         fi
 
-        if [ "$REBUILD_FLASHINFER" = true ] || [ "$FLASHINFER_WHEELS_EXIST" = false ]; then
-            if [ "$REBUILD_FLASHINFER" = true ]; then
-                echo "Rebuilding FlashInfer wheels (--rebuild-flashinfer specified)..."
-            else
-                echo "No FlashInfer wheels found in ./wheels/ — building..."
-            fi
+        BUILD_FLASHINFER=false
+        if [ "$REBUILD_FLASHINFER" = true ]; then
+            echo "Rebuilding FlashInfer wheels (--rebuild-flashinfer specified)..."
+            BUILD_FLASHINFER=true
+        elif try_download_wheels "$FLASHINFER_RELEASE_TAG" "flashinfer"; then
+            echo "FlashInfer wheels ready."
+        elif [ "$FLASHINFER_WHEELS_EXIST" = true ]; then
+            echo "Download failed — using existing local FlashInfer wheels."
+        else
+            echo "No FlashInfer wheels available (download failed) — building..."
+            BUILD_FLASHINFER=true
+        fi
 
+        if [ "$BUILD_FLASHINFER" = true ]; then
             # Back up existing flashinfer wheels; restore them if the build fails
             FI_BACKUP="./wheels/.backup-flashinfer"
             rm -rf "$FI_BACKUP" && mkdir -p "$FI_BACKUP"
@@ -236,8 +300,6 @@ if [ "$NO_BUILD" = false ]; then
                 rm -rf "$FI_BACKUP"
                 exit 1
             fi
-        else
-            echo "FlashInfer wheels already present in ./wheels/ — skipping build."
         fi
 
         # ----------------------------------------------------------
