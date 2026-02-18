@@ -202,6 +202,7 @@ if [ "$NO_BUILD" = false ]; then
         if [ "$REBUILD_FLASHINFER" = true ] || [ "$FLASHINFER_WHEELS_EXIST" = false ]; then
             if [ "$REBUILD_FLASHINFER" = true ]; then
                 echo "Rebuilding FlashInfer wheels (--rebuild-flashinfer specified)..."
+                rm -f ./wheels/flashinfer*.whl
             else
                 echo "No FlashInfer wheels found in ./wheels/ — building..."
             fi
@@ -237,6 +238,7 @@ if [ "$NO_BUILD" = false ]; then
         if [ "$REBUILD_VLLM" = true ] || [ "$VLLM_WHEELS_EXIST" = false ]; then
             if [ "$REBUILD_VLLM" = true ]; then
                 echo "Rebuilding vLLM wheels (--rebuild-vllm specified)..."
+                rm -f ./wheels/vllm*.whl
             else
                 echo "No vLLM wheels found in ./wheels/ — building..."
             fi
