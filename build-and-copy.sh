@@ -116,20 +116,35 @@ for a in assets:
         return 0
     fi
 
-    local URL NAME
+    # Back up existing wheels so we never leave a mix of old and new on failure
+    local DL_BACKUP="$WHEELS_DIR/.backup-download-${PREFIX}"
+    rm -rf "$DL_BACKUP" && mkdir -p "$DL_BACKUP"
+    for f in "$WHEELS_DIR/${PREFIX}"*.whl; do
+        [ -f "$f" ] && mv "$f" "$DL_BACKUP/"
+    done
+
     local URL NAME TMP_WHL
+    local DOWNLOADED=()
     while IFS=' ' read -r URL NAME; do
         echo "Downloading $NAME..."
         TMP_WHL=$(mktemp "$WHEELS_DIR/${NAME}.XXXXXX")
         if curl -L --progress-bar --connect-timeout 30 "$URL" -o "$TMP_WHL"; then
             mv "$TMP_WHL" "$WHEELS_DIR/$NAME"
+            DOWNLOADED+=("$WHEELS_DIR/$NAME")
         else
             rm -f "$TMP_WHL"
-            echo "Failed to download $NAME."
+            echo "Failed to download $NAME — removing other downloaded files."
+            for f in "${DOWNLOADED[@]}"; do rm -f "$f"; done
+            if compgen -G "$DL_BACKUP/${PREFIX}*.whl" > /dev/null 2>&1; then
+                echo "Restoring previous $PREFIX wheels..."
+                mv "$DL_BACKUP/${PREFIX}"*.whl "$WHEELS_DIR/"
+            fi
+            rm -rf "$DL_BACKUP"
             return 1
         fi
     done <<< "$DOWNLOAD_LIST"
 
+    rm -rf "$DL_BACKUP"
     return 0
 }
 
@@ -268,18 +283,13 @@ if [ "$NO_BUILD" = false ]; then
         # ----------------------------------------------------------
         # Phase 1: FlashInfer wheels
         # ----------------------------------------------------------
-        FLASHINFER_WHEELS_EXIST=false
-        if compgen -G "./wheels/flashinfer*.whl" > /dev/null 2>&1; then
-            FLASHINFER_WHEELS_EXIST=true
-        fi
-
         BUILD_FLASHINFER=false
         if [ "$REBUILD_FLASHINFER" = true ]; then
             echo "Rebuilding FlashInfer wheels (--rebuild-flashinfer specified)..."
             BUILD_FLASHINFER=true
         elif try_download_wheels "$FLASHINFER_RELEASE_TAG" "flashinfer"; then
             echo "FlashInfer wheels ready."
-        elif [ "$FLASHINFER_WHEELS_EXIST" = true ]; then
+        elif compgen -G "./wheels/flashinfer*.whl" > /dev/null 2>&1; then
             echo "Download failed — using existing local FlashInfer wheels."
         else
             echo "No FlashInfer wheels available (download failed) — building..."
